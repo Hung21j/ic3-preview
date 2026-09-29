@@ -26,7 +26,9 @@ import {
   BookOpen,
   Flag,
   ChevronDown,
-  LayoutGrid
+  LayoutGrid,
+  ZoomIn,
+  Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -163,8 +165,9 @@ export default function IC3QuestionBank({
   } | null>(null);
 
   // Keep random pool of definitions for matching question type
-  const [matchingPool, setMatchingPool] = useState<{ id: string; text: string }[]>([]);
+  const [matchingPool, setMatchingPool] = useState<{ id: string; text: string; image?: string }[]>([]);
   const [selectedPoolDef, setSelectedPoolDef] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const checkIfQuestionIsCorrect = (question: IC3Question, ans: string | undefined): boolean => {
     if (!ans) return false;
@@ -390,7 +393,8 @@ export default function IC3QuestionBank({
     if (qObj && qObj.type === "matching" && qObj.pairs) {
       const shuffled = qObj.pairs.map((p, idx) => ({
         id: `def-${idx}`,
-        text: p.right
+        text: p.right,
+        image: p.rightImage
       })).sort(() => Math.random() - 0.5);
       setMatchingPool(shuffled);
       setSelectedPoolDef(null);
@@ -1324,6 +1328,22 @@ export default function IC3QuestionBank({
                       <div className="space-y-2">
                         <div className="bg-white border-2 border-slate-300 rounded-2xl p-5 text-sm md:text-base text-slate-950 leading-relaxed font-bold shadow-xs">
                           <p className="whitespace-pre-wrap leading-relaxed">{q.text}</p>
+                          {q.image && (
+                            <div className="mt-4 flex flex-col items-center justify-center">
+                              <div className="relative group max-w-full overflow-hidden rounded-xl border-2 border-slate-300 bg-slate-50 p-1 shadow-xs">
+                                <img
+                                  src={q.image}
+                                  alt="Hình ảnh minh họa câu hỏi"
+                                  className="max-h-72 sm:max-h-84 md:max-h-96 w-auto max-w-full rounded-lg object-contain cursor-pointer transition-transform hover:scale-[1.01]"
+                                  onClick={() => setPreviewImage(q.image!)}
+                                />
+                                <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-slate-900/75 text-white text-[10px] font-mono rounded-md backdrop-blur-xs flex items-center gap-1 pointer-events-none">
+                                  <ZoomIn className="w-3 h-3" />
+                                  <span>Bấm để phóng to</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1658,7 +1678,19 @@ export default function IC3QuestionBank({
                                     onDrop={(e) => handleDrop(e, pair.left)}
                                   >
                                     {/* Term description */}
-                                    <div className="sm:w-1/3 min-w-[95px] flex items-center justify-center p-2.5 bg-indigo-600 text-white rounded-lg shadow-xs shrink-0 font-mono font-bold text-xs sm:text-sm text-center break-words">
+                                    <div className="sm:w-1/3 min-w-[105px] flex flex-col items-center justify-center p-2.5 bg-indigo-600 text-white rounded-lg shadow-xs shrink-0 font-mono font-bold text-xs sm:text-sm text-center break-words gap-1.5">
+                                      {pair.leftImage && (
+                                        <img
+                                          src={pair.leftImage}
+                                          alt={pair.left}
+                                          className="w-14 h-14 sm:w-16 sm:h-16 rounded-md object-contain bg-white/15 p-0.5 border border-white/25 cursor-pointer hover:opacity-90 transition"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPreviewImage(pair.leftImage!);
+                                          }}
+                                          title="Bấm để phóng to ảnh"
+                                        />
+                                      )}
                                       <span>{pair.left}</span>
                                     </div>
 
@@ -1677,7 +1709,27 @@ export default function IC3QuestionBank({
                                     >
                                       {matchedDef ? (
                                         <>
-                                          <span className="flex-1 font-bold text-slate-950 break-words">{matchedDef}</span>
+                                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            {(() => {
+                                              const matchedPairObj = q.pairs.find(p => p.right === matchedDef);
+                                              if (matchedPairObj?.rightImage) {
+                                                return (
+                                                  <img
+                                                    src={matchedPairObj.rightImage}
+                                                    alt={matchedDef}
+                                                    className="w-10 h-10 rounded-md object-contain bg-slate-100 border border-slate-300 p-0.5 shrink-0 cursor-pointer hover:opacity-90"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setPreviewImage(matchedPairObj.rightImage!);
+                                                    }}
+                                                    title="Bấm để phóng to ảnh"
+                                                  />
+                                                );
+                                              }
+                                              return null;
+                                            })()}
+                                            <span className="flex-1 font-bold text-slate-950 break-words">{matchedDef}</span>
+                                          </div>
                                           {!(appMode === "training" && isChecked) && (
                                             <button 
                                               type="button"
@@ -1685,7 +1737,7 @@ export default function IC3QuestionBank({
                                                 e.stopPropagation();
                                                 handleUnmatch(pair.left);
                                               }}
-                                              className="p-1 hover:bg-slate-100 text-slate-500 hover:text-red-600 rounded transition shrink-0"
+                                              className="p-1 hover:bg-slate-100 text-slate-500 hover:text-red-600 rounded transition shrink-0 cursor-pointer"
                                               title="Gỡ ghép nối"
                                             >
                                               <X className="w-4 h-4" />
@@ -1765,9 +1817,23 @@ export default function IC3QuestionBank({
                                           setSelectedPoolDef(defItem.text);
                                         }
                                       }}
-                                      className={`p-3 rounded-xl border text-xs md:text-sm leading-relaxed font-semibold transition flex items-center justify-between gap-3 shadow-xs select-none ${itemClass}`}
+                                      className={`p-2.5 sm:p-3 rounded-xl border text-xs md:text-sm leading-relaxed font-semibold transition flex items-center justify-between gap-3 shadow-xs select-none ${itemClass}`}
                                     >
-                                      <span className="flex-1 break-words">{defItem.text}</span>
+                                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        {defItem.image && (
+                                          <img
+                                            src={defItem.image}
+                                            alt={defItem.text}
+                                            className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg border border-slate-300 object-contain bg-slate-50 p-0.5 shrink-0 cursor-pointer hover:opacity-90"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setPreviewImage(defItem.image!);
+                                            }}
+                                            title="Bấm để phóng to ảnh"
+                                          />
+                                        )}
+                                        <span className="flex-1 break-words">{defItem.text}</span>
+                                      </div>
                                       {!(appMode === "training" && isChecked) && (
                                         <div className="w-5 h-5 bg-slate-100 rounded border border-slate-300 text-slate-500 flex items-center justify-center font-bold text-xs shrink-0 font-mono">
                                           ⠿
@@ -2432,6 +2498,33 @@ export default function IC3QuestionBank({
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Image Lightbox Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs cursor-pointer select-none"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 shadow-2xl flex flex-col items-center border border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center hover:bg-rose-600 transition shadow-lg cursor-pointer"
+              title="Đóng xem ảnh"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={previewImage}
+              alt="Phóng to hình ảnh"
+              className="max-h-[82vh] w-auto max-w-full rounded-xl object-contain shadow-xs"
+            />
+          </div>
         </div>
       )}
 

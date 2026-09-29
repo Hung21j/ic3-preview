@@ -34,7 +34,9 @@ import {
   RotateCcw,
   ArrowUp,
   ArrowDown,
-  ListOrdered
+  ListOrdered,
+  Image as ImageIcon,
+  ZoomIn
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, SessionLog, ExamHistoryItem } from "../types";
@@ -45,6 +47,7 @@ import {
   exportToCsvSheet, 
   ParsedStudentRow 
 } from "../utils/sheetExportUtils";
+import { compressAndEncodeImage } from "../utils/imageUtils";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 import { EditQuestionModal } from "./EditQuestionModal";
 
@@ -140,6 +143,8 @@ export default function AdminDashboard({
   const [qSubsetId, setQSubsetId] = useState<"GM1" | "GM2" | "OT1" | "OT2" | "OT3" | "OT4" | "OT5">("GM1");
   const [qType, setQType] = useState<"multiple_choice" | "yes_no" | "matching">("multiple_choice");
   const [qText, setQText] = useState("");
+  const [qImage, setQImage] = useState("");
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [qOrder, setQOrder] = useState<number | "">("");
   const [orderInputMap, setOrderInputMap] = useState<Record<string, number | "">>({});
   // MC Subtype & Dynamic Options
@@ -155,10 +160,15 @@ export default function AdminDashboard({
     { text: "", correct: "True" }
   ]);
   const [correctAnswerNote, setCorrectAnswerNote] = useState("");
-  const [matchingPairs, setMatchingPairs] = useState<Array<{ left: string; right: string }>>([
-    { left: "", right: "" },
-    { left: "", right: "" },
-    { left: "", right: "" }
+  const [matchingPairs, setMatchingPairs] = useState<Array<{
+    left: string;
+    right: string;
+    leftImage?: string;
+    rightImage?: string;
+  }>>([
+    { left: "", right: "", leftImage: "", rightImage: "" },
+    { left: "", right: "", leftImage: "", rightImage: "" },
+    { left: "", right: "", leftImage: "", rightImage: "" }
   ]);
 
   const updateMcOption = (index: number, value: string) => {
@@ -266,12 +276,50 @@ export default function AdminDashboard({
     });
   };
 
+  const handleMainImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        const base64 = await compressAndEncodeImage(e.target.files[0]);
+        setQImage(base64);
+      } catch (err: any) {
+        alert(err?.message || "Lỗi tải ảnh.");
+      }
+    }
+  };
+
+  const handlePairImageUpload = async (
+    index: number,
+    side: "leftImage" | "rightImage",
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        const base64 = await compressAndEncodeImage(e.target.files[0]);
+        setMatchingPairs((prev) => {
+          const copy = [...prev];
+          copy[index] = { ...copy[index], [side]: base64 };
+          return copy;
+        });
+      } catch (err: any) {
+        alert(err?.message || "Lỗi tải ảnh.");
+      }
+    }
+  };
+
+  const removeMatchingPairImage = (index: number, side: "leftImage" | "rightImage") => {
+    setMatchingPairs((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [side]: "" };
+      return copy;
+    });
+  };
+
   const addMatchingPair = () => {
     if (matchingPairs.length >= 8) {
       alert("Tối đa 8 cặp ghép nối cho mỗi câu hỏi.");
       return;
     }
-    setMatchingPairs((prev) => [...prev, { left: "", right: "" }]);
+    setMatchingPairs((prev) => [...prev, { left: "", right: "", leftImage: "", rightImage: "" }]);
   };
 
   const removeMatchingPair = (index: number) => {
@@ -589,7 +637,12 @@ export default function AdminDashboard({
         finalCorrectKeys = undefined;
     } else if (qType === "matching") {
       const validPairs = matchingPairs
-        .map((p) => ({ left: p.left.trim(), right: p.right.trim() }))
+        .map((p) => ({ 
+          left: p.left.trim(), 
+          right: p.right.trim(),
+          leftImage: p.leftImage?.trim() || undefined,
+          rightImage: p.rightImage?.trim() || undefined
+        }))
         .filter((p) => p.left && p.right);
 
       if (validPairs.length < 2) {
@@ -628,6 +681,7 @@ export default function AdminDashboard({
         subsetId: qSubsetId,
         type: qType,
         text: qText.trim(),
+        image: qImage.trim() || undefined,
         options,
         correctAnswerText: correctAnswerNote.trim() || defaultAnswerText,
         correctKeys: finalCorrectKeys,
@@ -639,6 +693,7 @@ export default function AdminDashboard({
 
       notify("Đã thêm câu hỏi mới vào ngân hàng đề thi thành công!");
       setQText("");
+      setQImage("");
       setQOrder("");
       setMcOptions(["", "", "", ""]);
       setMcCorrectKeys(["A"]);
@@ -650,9 +705,9 @@ export default function AdminDashboard({
       ]);
       if (qType === "matching") {
         setMatchingPairs([
-          { left: "", right: "" },
-          { left: "", right: "" },
-          { left: "", right: "" }
+          { left: "", right: "", leftImage: "", rightImage: "" },
+          { left: "", right: "", leftImage: "", rightImage: "" },
+          { left: "", right: "", leftImage: "", rightImage: "" }
         ]);
       }
       loadData();
@@ -1651,16 +1706,75 @@ export default function AdminDashboard({
                     />
                   </div>
 
+                  {/* Question Image (Optional) */}
+                  <div className="space-y-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-extrabold uppercase font-mono text-slate-600 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Hình ảnh câu hỏi / đề bài (tùy chọn)</span>
+                      </label>
+                      {qImage && (
+                        <button
+                          type="button"
+                          onClick={() => setQImage("")}
+                          className="text-[10px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Xóa ảnh</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {qImage ? (
+                      <div className="relative group max-w-xs rounded-lg overflow-hidden border border-slate-200 bg-white p-1">
+                        <img
+                          src={qImage}
+                          alt="Ảnh đề bài"
+                          className="max-h-36 w-auto rounded object-contain mx-auto cursor-pointer"
+                          onClick={() => setPreviewImage(qImage)}
+                        />
+                        <div className="text-[9px] text-center text-slate-500 mt-1 font-mono">
+                          Bấm vào ảnh để xem kích thước lớn
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        <label className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-white border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-lg text-xs font-semibold text-slate-600 cursor-pointer transition">
+                          <Upload className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>Tải ảnh từ máy tính...</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleMainImageUpload}
+                          />
+                        </label>
+                        <input
+                          type="text"
+                          value={qImage}
+                          onChange={(e) => setQImage(e.target.value)}
+                          placeholder="Hoặc dán URL ảnh..."
+                          className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   {/* Matching Pairs Builder */}
                   {qType === "matching" && (
                     <div className="space-y-3 pt-1 border-t border-slate-100">
                       <div className="flex items-center justify-between">
-                        <div className="text-[10px] font-extrabold uppercase font-mono text-slate-600">
-                          Câu trả lời
+                        <div>
+                          <div className="text-[10px] font-extrabold uppercase font-mono text-slate-600">
+                            Các cặp ghép nối (Cột trái ➔ Cột phải)
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono">
+                            Có thể chèn ảnh cho thuật ngữ và/hoặc định nghĩa kéo thả
+                          </div>
                         </div>
                       </div>
 
-                      <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                      <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                         {matchingPairs.map((pair, pIdx) => (
                           <div 
                             key={pIdx} 
@@ -1668,13 +1782,13 @@ export default function AdminDashboard({
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-150">
-                                Câu #{pIdx + 1}
+                                Cặp #{pIdx + 1}
                               </span>
                               {matchingPairs.length > 2 && (
                                 <button
                                   type="button"
                                   onClick={() => removeMatchingPair(pIdx)}
-                                  className="text-slate-400 hover:text-rose-600 p-1 rounded transition text-xs flex items-center gap-1"
+                                  className="text-slate-400 hover:text-rose-600 p-1 rounded transition text-xs flex items-center gap-1 cursor-pointer"
                                   title="Xóa cặp này"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1683,33 +1797,103 @@ export default function AdminDashboard({
                               )}
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <div>
-                                <label className="block text-[9px] font-mono text-slate-500 uppercase font-bold mb-0.5">
-                                  Thuật ngữ
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={pair.left}
-                                  onChange={(e) => updateMatchingPair(pIdx, "left", e.target.value)}
-                                  placeholder="VD: Desktop Computer"
-                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                                />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {/* Left item */}
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-[9px] font-mono text-slate-500 uppercase font-bold">
+                                    Thuật ngữ (Vế trái)
+                                  </label>
+                                  {pair.leftImage ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeMatchingPairImage(pIdx, "leftImage")}
+                                      className="text-[9px] text-rose-500 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" />
+                                      <span>Gỡ ảnh</span>
+                                    </button>
+                                  ) : (
+                                    <label className="text-[9px] text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer font-bold">
+                                      <ImageIcon className="w-2.5 h-2.5" />
+                                      <span>+ Ảnh</span>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => handlePairImageUpload(pIdx, "leftImage", e)}
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {pair.leftImage && (
+                                    <img
+                                      src={pair.leftImage}
+                                      alt="Ảnh trái"
+                                      className="w-8 h-8 rounded border border-slate-300 object-contain bg-white p-0.5 shrink-0 cursor-pointer"
+                                      onClick={() => setPreviewImage(pair.leftImage!)}
+                                      title="Bấm để phóng to"
+                                    />
+                                  )}
+                                  <input
+                                    type="text"
+                                    required
+                                    value={pair.left}
+                                    onChange={(e) => updateMatchingPair(pIdx, "left", e.target.value)}
+                                    placeholder="VD: Desktop Computer"
+                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
                               </div>
 
-                              <div>
-                                <label className="block text-[9px] font-mono text-slate-500 uppercase font-bold mb-0.5">
-                                  Định nghĩa
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={pair.right}
-                                  onChange={(e) => updateMatchingPair(pIdx, "right", e.target.value)}
-                                  placeholder="VD: Có khả năng hợp nhất và chỉnh sửa..."
-                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                                />
+                              {/* Right item */}
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-[9px] font-mono text-slate-500 uppercase font-bold">
+                                    Định nghĩa / Thẻ (Vế phải)
+                                  </label>
+                                  {pair.rightImage ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeMatchingPairImage(pIdx, "rightImage")}
+                                      className="text-[9px] text-rose-500 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" />
+                                      <span>Gỡ ảnh</span>
+                                    </button>
+                                  ) : (
+                                    <label className="text-[9px] text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer font-bold">
+                                      <ImageIcon className="w-2.5 h-2.5" />
+                                      <span>+ Ảnh</span>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => handlePairImageUpload(pIdx, "rightImage", e)}
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {pair.rightImage && (
+                                    <img
+                                      src={pair.rightImage}
+                                      alt="Ảnh phải"
+                                      className="w-8 h-8 rounded border border-slate-300 object-contain bg-white p-0.5 shrink-0 cursor-pointer"
+                                      onClick={() => setPreviewImage(pair.rightImage!)}
+                                      title="Bấm để phóng to"
+                                    />
+                                  )}
+                                  <input
+                                    type="text"
+                                    required
+                                    value={pair.right}
+                                    onChange={(e) => updateMatchingPair(pIdx, "right", e.target.value)}
+                                    placeholder="VD: Có khả năng hợp nhất và chỉnh sửa..."
+                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2208,6 +2392,19 @@ export default function AdminDashboard({
                           {q.text}
                         </p>
 
+                        {/* Question Image (if attached) */}
+                        {q.image && (
+                          <div className="mb-2">
+                            <img
+                              src={q.image}
+                              alt="Ảnh câu hỏi"
+                              className="max-h-28 rounded-lg border border-slate-200 object-contain bg-white cursor-pointer hover:opacity-90 transition p-0.5 shadow-xs"
+                              onClick={() => setPreviewImage(q.image)}
+                              title="Bấm để xem ảnh lớn"
+                            />
+                          </div>
+                        )}
+
                         {/* Multiple Choice Options */}
                         {q.options && q.options.length > 0 && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-2">
@@ -2238,13 +2435,35 @@ export default function AdminDashboard({
                             <div className="grid grid-cols-1 gap-1.5">
                               {q.pairs.map((pair: any, pIdx: number) => (
                                 <div key={pIdx} className="flex items-center gap-2 text-xs bg-slate-50 p-2 rounded-lg border border-slate-150">
-                                  <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-150 shrink-0 text-[11px] font-mono">
-                                    {pair.left}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {pair.leftImage && (
+                                      <img
+                                        src={pair.leftImage}
+                                        alt={pair.left}
+                                        className="w-7 h-7 rounded border border-slate-300 object-contain bg-white shrink-0 cursor-pointer"
+                                        onClick={() => setPreviewImage(pair.leftImage)}
+                                        title="Bấm để xem ảnh"
+                                      />
+                                    )}
+                                    <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-150 text-[11px] font-mono">
+                                      {pair.left}
+                                    </span>
+                                  </div>
                                   <span className="text-slate-400 font-bold">➔</span>
-                                  <span className="text-slate-700 text-[11px] font-medium leading-relaxed">
-                                    {pair.right}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    {pair.rightImage && (
+                                      <img
+                                        src={pair.rightImage}
+                                        alt={pair.right}
+                                        className="w-7 h-7 rounded border border-slate-300 object-contain bg-white shrink-0 cursor-pointer"
+                                        onClick={() => setPreviewImage(pair.rightImage)}
+                                        title="Bấm để xem ảnh"
+                                      />
+                                    )}
+                                    <span className="text-slate-700 text-[11px] font-medium leading-relaxed break-words">
+                                      {pair.right}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -2609,6 +2828,33 @@ export default function AdminDashboard({
           onQuestionsUpdated?.();
         }}
       />
+
+      {/* Image Lightbox Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs cursor-pointer"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 shadow-2xl flex flex-col items-center border border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center hover:bg-rose-600 transition shadow-lg cursor-pointer"
+              title="Đóng xem ảnh"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={previewImage}
+              alt="Phóng to hình ảnh"
+              className="max-h-[82vh] w-auto max-w-full rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

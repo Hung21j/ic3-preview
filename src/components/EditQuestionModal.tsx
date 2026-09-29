@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Edit3, X, CheckCircle2, AlertCircle, Plus, Trash2 } from "lucide-react";
+import { Edit3, X, CheckCircle2, AlertCircle, Plus, Trash2, Image as ImageIcon, UploadCloud } from "lucide-react";
 import { IC3Question } from "../data/ic3Questions";
 import { apiService } from "../services/apiService";
+import { compressAndEncodeImage } from "../utils/imageUtils";
 
 interface EditQuestionModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
   const [qSubsetId, setQSubsetId] = useState<"GM1" | "GM2" | "OT1" | "OT2" | "OT3" | "OT4" | "OT5">("GM1");
   const [qType, setQType] = useState<"multiple_choice" | "yes_no" | "matching">("multiple_choice");
   const [qText, setQText] = useState("");
+  const [qImage, setQImage] = useState("");
   const [mcOptions, setMcOptions] = useState<string[]>(["", "", "", ""]);
   const [mcCorrectKeys, setMcCorrectKeys] = useState<string[]>(["A"]);
   // const [yesNoCorrect, setYesNoCorrect] = useState<"True" | "False">("True");
@@ -31,10 +33,15 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
     { text: "", correct: "False" },
     { text: "", correct: "True" }
   ]);
-  const [matchingPairs, setMatchingPairs] = useState<{ left: string; right: string }[]>([
-    { left: "", right: "" },
-    { left: "", right: "" },
-    { left: "", right: "" }
+  const [matchingPairs, setMatchingPairs] = useState<{
+    left: string;
+    right: string;
+    leftImage?: string;
+    rightImage?: string;
+  }[]>([
+    { left: "", right: "", leftImage: "", rightImage: "" },
+    { left: "", right: "", leftImage: "", rightImage: "" },
+    { left: "", right: "", leftImage: "", rightImage: "" }
   ]);
   const [correctAnswerNote, setCorrectAnswerNote] = useState("");
   const [qOrder, setQOrder] = useState<number | "">("");
@@ -47,6 +54,7 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
       setQSubsetId(question.subsetId || "GM1");
       setQType(question.type || "multiple_choice");
       setQText(question.text || "");
+      setQImage(question.image || "");
       setCorrectAnswerNote(question.correctAnswerText || "");
       setQOrder(typeof question.order === "number" ? question.order : "");
 
@@ -86,12 +94,19 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
         }
       } else if (question.type === "matching") {
         if (question.pairs && question.pairs.length > 0) {
-          setMatchingPairs(question.pairs.map((p) => ({ left: p.left, right: p.right })));
+          setMatchingPairs(
+            question.pairs.map((p) => ({
+              left: p.left,
+              right: p.right,
+              leftImage: p.leftImage || "",
+              rightImage: p.rightImage || ""
+            }))
+          );
         } else {
           setMatchingPairs([
-            { left: "", right: "" },
-            { left: "", right: "" },
-            { left: "", right: "" }
+            { left: "", right: "", leftImage: "", rightImage: "" },
+            { left: "", right: "", leftImage: "", rightImage: "" },
+            { left: "", right: "", leftImage: "", rightImage: "" }
           ]);
         }
       }
@@ -121,8 +136,42 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
     setMatchingPairs(updated);
   };
 
+  const handleMainImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        const base64 = await compressAndEncodeImage(e.target.files[0]);
+        setQImage(base64);
+      } catch (err: any) {
+        alert(err?.message || "Lỗi xử lý ảnh.");
+      }
+    }
+  };
+
+  const handlePairImageUpload = async (
+    idx: number,
+    side: "leftImage" | "rightImage",
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        const base64 = await compressAndEncodeImage(e.target.files[0]);
+        const updated = [...matchingPairs];
+        updated[idx] = { ...updated[idx], [side]: base64 };
+        setMatchingPairs(updated);
+      } catch (err: any) {
+        alert(err?.message || "Lỗi xử lý ảnh.");
+      }
+    }
+  };
+
+  const removePairImage = (idx: number, side: "leftImage" | "rightImage") => {
+    const updated = [...matchingPairs];
+    updated[idx] = { ...updated[idx], [side]: "" };
+    setMatchingPairs(updated);
+  };
+
   const addPair = () => {
-    setMatchingPairs([...matchingPairs, { left: "", right: "" }]);
+    setMatchingPairs([...matchingPairs, { left: "", right: "", leftImage: "", rightImage: "" }]);
   };
 
   const removePair = (idx: number) => {
@@ -228,7 +277,12 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
         }
     } else if (qType === "matching") {
       const validPairs = matchingPairs
-        .map((p) => ({ left: p.left.trim(), right: p.right.trim() }))
+        .map((p) => ({
+          left: p.left.trim(),
+          right: p.right.trim(),
+          leftImage: p.leftImage?.trim() || undefined,
+          rightImage: p.rightImage?.trim() || undefined
+        }))
         .filter((p) => p.left && p.right);
 
       if (validPairs.length < 2) {
@@ -248,6 +302,7 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
         subsetId: qSubsetId,
         type: qType,
         text: trimmedText,
+        image: qImage.trim() || undefined,
         options: formattedOptions,
         correctKeys: finalCorrectKeys,
         statements: finalStatements,
@@ -388,6 +443,59 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
               />
             </div>
 
+            {/* Question Main Image (Optional for screenshots/illustrations) */}
+            <div className="p-3 bg-slate-50/70 dark:bg-slate-850/40 border border-slate-200/80 dark:border-slate-800 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Hình ảnh đề bài minh họa (Tùy chọn)</span>
+                </label>
+                {qImage && (
+                  <button
+                    type="button"
+                    onClick={() => setQImage("")}
+                    className="text-[11px] font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa ảnh</span>
+                  </button>
+                )}
+              </div>
+
+              {qImage ? (
+                <div className="relative group max-w-sm rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1">
+                  <img
+                    src={qImage}
+                    alt="Ảnh đề bài"
+                    className="max-h-40 w-auto rounded object-contain mx-auto"
+                  />
+                  <div className="text-[10px] text-center text-slate-500 mt-1 font-mono">
+                    Đã tải ảnh thành công
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                  <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer transition">
+                    <UploadCloud className="w-4 h-4 text-indigo-500" />
+                    <span>Tải ảnh từ máy tính...</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleMainImageUpload}
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    value={qImage}
+                    onChange={(e) => setQImage(e.target.value)}
+                    placeholder="Hoặc dán link URL ảnh..."
+                    className="flex-1 px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Dynamic Type Fields */}
             {qType === "multiple_choice" && (
               <div className="space-y-3 p-4 bg-slate-50/70 dark:bg-slate-850/40 border border-slate-200/80 dark:border-slate-800 rounded-xl">
@@ -519,9 +627,14 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
             {qType === "matching" && (
               <div className="space-y-3 p-4 bg-slate-50/70 dark:bg-slate-850/40 border border-slate-200/80 dark:border-slate-800 rounded-xl">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Các cặp ghép nối (Cột trái ➔ Cột phải)
-                  </span>
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      Các cặp ghép nối (Cột trái ➔ Cột phải)
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Có thể đính kèm ảnh cho thuật ngữ và/hoặc định nghĩa kéo thả
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={addPair}
@@ -532,35 +645,117 @@ export const EditQuestionModal: React.FC<EditQuestionModalProps> = ({
                   </button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {matchingPairs.map((p, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="w-5 text-[11px] font-mono font-bold text-slate-400 text-center">
-                        {idx + 1}.
-                      </span>
-                      <input
-                        type="text"
-                        value={p.left}
-                        onChange={(e) => handlePairChange(idx, "left", e.target.value)}
-                        placeholder="Vế trái..."
-                        className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
-                      />
-                      <span className="text-slate-400 font-bold">➔</span>
-                      <input
-                        type="text"
-                        value={p.right}
-                        onChange={(e) => handlePairChange(idx, "right", e.target.value)}
-                        placeholder="Vế phải..."
-                        className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePair(idx)}
-                        disabled={matchingPairs.length <= 2}
-                        className="p-1 text-slate-400 hover:text-rose-500 disabled:opacity-30 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div key={idx} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-500">
+                        <span className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded text-[11px]">
+                          Cặp #{idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removePair(idx)}
+                          disabled={matchingPairs.length <= 2}
+                          className="p-1 text-slate-400 hover:text-rose-500 disabled:opacity-30 cursor-pointer flex items-center gap-1 text-[11px]"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa cặp</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Vế trái */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase font-mono">
+                              Vế trái (Thuật ngữ)
+                            </span>
+                            {p.leftImage ? (
+                              <button
+                                type="button"
+                                onClick={() => removePairImage(idx, "leftImage")}
+                                className="text-[10px] text-rose-500 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Gỡ ảnh</span>
+                              </button>
+                            ) : (
+                              <label className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer font-bold">
+                                <ImageIcon className="w-3 h-3" />
+                                <span>+ Đính kèm ảnh</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handlePairImageUpload(idx, "leftImage", e)}
+                                />
+                              </label>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {p.leftImage && (
+                              <img
+                                src={p.leftImage}
+                                alt="Ảnh trái"
+                                className="w-9 h-9 rounded-lg border border-slate-300 dark:border-slate-700 object-contain bg-slate-50 dark:bg-slate-800 p-0.5 shrink-0"
+                              />
+                            )}
+                            <input
+                              type="text"
+                              value={p.left}
+                              onChange={(e) => handlePairChange(idx, "left", e.target.value)}
+                              placeholder="Thuật ngữ / Vế trái..."
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Vế phải */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase font-mono">
+                              Vế phải (Định nghĩa / Thẻ)
+                            </span>
+                            {p.rightImage ? (
+                              <button
+                                type="button"
+                                onClick={() => removePairImage(idx, "rightImage")}
+                                className="text-[10px] text-rose-500 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Gỡ ảnh</span>
+                              </button>
+                            ) : (
+                              <label className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer font-bold">
+                                <ImageIcon className="w-3 h-3" />
+                                <span>+ Đính kèm ảnh</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handlePairImageUpload(idx, "rightImage", e)}
+                                />
+                              </label>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {p.rightImage && (
+                              <img
+                                src={p.rightImage}
+                                alt="Ảnh phải"
+                                className="w-9 h-9 rounded-lg border border-slate-300 dark:border-slate-700 object-contain bg-slate-50 dark:bg-slate-800 p-0.5 shrink-0"
+                              />
+                            )}
+                            <input
+                              type="text"
+                              value={p.right}
+                              onChange={(e) => handlePairChange(idx, "right", e.target.value)}
+                              placeholder="Định nghĩa / Vế phải..."
+                              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

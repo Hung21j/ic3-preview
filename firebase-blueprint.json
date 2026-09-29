@@ -26,6 +26,7 @@
         "subsetId": { "type": "string" },
         "type": { "type": "string", "enum": ["multiple_choice", "yes_no", "matching"] },
         "text": { "type": "string" },
+        "image": { "type": "string" },
         "options": { "type": "array" },
         "correctAnswerText": { "type": "string" },
         "correctKeys": { "type": "array" },

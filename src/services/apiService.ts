@@ -810,6 +810,7 @@ export const apiService = {
     subsetId: "GM1" | "GM2" | "OT1" | "OT2" | "OT3" | "OT4" | "OT5";
     type: "multiple_choice" | "yes_no" | "matching";
     text: string;
+    image?: string;
     options?: string[];
     correctAnswerText?: string;
     correctKeys?: string[];
@@ -817,7 +818,7 @@ export const apiService = {
       text: string;
       correct: "True" | "False";
     }[];
-    pairs?: { left: string; right: string }[];
+    pairs?: { left: string; right: string; leftImage?: string; rightImage?: string }[];
     explanation?: string;
     order?: number;
     createdBy?: string;
@@ -829,6 +830,7 @@ export const apiService = {
       subsetId: q.subsetId,
       type: q.type,
       text: q.text,
+      ...(q.image ? { image: q.image } : {}),
       ...(q.options && q.options.length > 0 ? { options: q.options } : {}),
       ...(q.correctAnswerText ? { correctAnswerText: q.correctAnswerText } : {}),
       ...(q.correctKeys && q.correctKeys.length > 0 ? { correctKeys: q.correctKeys } : {}),
@@ -875,6 +877,7 @@ export const apiService = {
       subsetId: q.subsetId || existing?.subsetId || "GM1",
       type: q.type || existing?.type || "multiple_choice",
       text: (q.text !== undefined ? q.text : existing?.text || "").trim(),
+      ...(q.image !== undefined ? (q.image ? { image: q.image } : {}) : existing?.image ? { image: existing.image } : {}),
       ...(q.options && q.options.length > 0 ? { options: q.options } : existing?.options ? { options: existing.options } : {}),
       ...(q.correctAnswerText !== undefined ? { correctAnswerText: q.correctAnswerText } : existing?.correctAnswerText ? { correctAnswerText: existing.correctAnswerText } : {}),
       ...(q.correctKeys && q.correctKeys.length > 0 ? { correctKeys: q.correctKeys } : existing?.correctKeys ? { correctKeys: existing.correctKeys } : {}),
