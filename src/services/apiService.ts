@@ -205,6 +205,8 @@ export const apiService = {
       if (cloudUsers && cloudUsers.length > 0) {
         const match = cloudUsers.find(
           (u) => u.user.username.toLowerCase() === cleanUsername
+        ) || cloudUsers.find(
+          (u) => u.user.name && u.user.name.trim().toLowerCase() === cleanUsername
         );
 
         if (match) {
@@ -278,7 +280,8 @@ export const apiService = {
 
     // 3. Local Storage Fallback
     const localUsers = getLocalUsers();
-    const match = localUsers.find((entry) => entry.user.username.toLowerCase() === cleanUsername);
+    const match = localUsers.find((entry) => entry.user.username.toLowerCase() === cleanUsername) ||
+                  localUsers.find((entry) => entry.user.name && entry.user.name.trim().toLowerCase() === cleanUsername);
 
     if (!match) {
       throw new Error("Tài khoản chưa được đăng ký trên hệ thống. Vui lòng bấm 'Tạo tài khoản mới'.");

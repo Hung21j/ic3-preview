@@ -42,6 +42,10 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [listPassword, setListPassword] = useState("");
   const [showListPassword, setShowListPassword] = useState(false);
 
+  // Field for student who does not find their name in list
+  const [isManualUsernameMode, setIsManualUsernameMode] = useState(false);
+  const [manualUsername, setManualUsername] = useState("");
+
   // Fetch student directory added by admin
   const loadStudentDirectory = async () => {
     setIsLoadingStudents(true);
@@ -103,10 +107,33 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // Handle Dropdown List Login Submit (School -> Class -> Name -> Password)
+  // Handle Dropdown List Login Submit (School -> Class -> Name -> Password OR Manual Username fallback)
   const handleListLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // If student cannot find their name in list and entered their username manually
+    if (isManualUsernameMode) {
+      if (!manualUsername.trim()) {
+        setError("Vui lòng nhập tên đăng nhập của học sinh.");
+        return;
+      }
+      if (!listPassword) {
+        setError("Vui lòng nhập mật khẩu tài khoản học sinh.");
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const res = await apiService.login(manualUsername.trim(), listPassword);
+        onAuthSuccess(res.user);
+      } catch (err: any) {
+        setError(err.message || "Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     if (!selectedSchool) {
       setError("Vui lòng chọn trường học từ danh sách.");
@@ -117,7 +144,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       return;
     }
     if (!selectedStudentId || !selectedStudent) {
-      setError("Vui lòng chọn họ và tên học sinh.");
+      setError("Vui lòng chọn họ và tên học sinh hoặc chuyển sang tự nhập tên đăng nhập.");
       return;
     }
     if (!listPassword) {
@@ -297,41 +324,123 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     </div>
                   </div>
 
-                  {/* THUỘC TÍNH 3: TÊN HỌC SINH */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-black uppercase tracking-wide text-slate-800 font-mono flex items-center gap-1.5">
-                      <UserIcon className="w-4 h-4 text-indigo-600 shrink-0" />
-                      <span>3. Họ và tên học sinh</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        required
-                        disabled={!selectedClass}
-                        value={selectedStudentId}
-                        onChange={(e) => {
-                          setSelectedStudentId(e.target.value);
-                          setListPassword("");
+                  {/* THUỘC TÍNH 3: TÊN HỌC SINH HOẶC TỰ NHẬP TÊN ĐĂNG NHẬP */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-black uppercase tracking-wide text-slate-800 font-mono flex items-center gap-1.5">
+                        <UserIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>3. {isManualUsernameMode ? "Tự nhập Tên đăng nhập" : "Họ và tên học sinh"}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsManualUsernameMode(!isManualUsernameMode);
+                          if (!isManualUsernameMode) {
+                            setSelectedStudentId("");
+                          } else {
+                            setManualUsername("");
+                          }
                           setError(null);
                         }}
-                        className={`w-full px-3.5 py-3 border-2 rounded-xl text-sm font-bold text-slate-950 transition cursor-pointer appearance-none pr-9 ${
-                          selectedClass
-                            ? "bg-[#eef2f6] hover:bg-white border-slate-300 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
-                            : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-                        }`}
+                        className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center gap-1 cursor-pointer"
                       >
-                        <option value="">
-                          {selectedClass ? "-- Chọn Họ và tên học sinh --" : "-- Vui lòng chọn lớp trước --"}
-                        </option>
-                        {filteredStudents.map((s) => (
-                          <option key={s.id} value={s.id} className="font-semibold text-slate-900">
-                            {s.name} ({s.username})
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
-                        <ArrowRight className="w-4 h-4 rotate-90" />
-                      </div>
+                        {isManualUsernameMode ? (
+                          <span>← Quay lại chọn danh sách</span>
+                        ) : (
+                          <span>Không thấy tên? Tự nhập</span>
+                        )}
+                      </button>
                     </div>
+
+                    {!isManualUsernameMode ? (
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <select
+                            required={!isManualUsernameMode}
+                            disabled={!selectedClass}
+                            value={selectedStudentId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "__manual__") {
+                                setIsManualUsernameMode(true);
+                                setSelectedStudentId("");
+                              } else {
+                                setSelectedStudentId(val);
+                              }
+                              setListPassword("");
+                              setError(null);
+                            }}
+                            className={`w-full px-3.5 py-3 border-2 rounded-xl text-sm font-bold text-slate-950 transition cursor-pointer appearance-none pr-9 ${
+                              selectedClass
+                                ? "bg-[#eef2f6] hover:bg-white border-slate-300 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
+                                : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                            }`}
+                          >
+                            <option value="">
+                              {selectedClass ? "-- Chọn Họ và tên học sinh --" : "-- Vui lòng chọn lớp trước --"}
+                            </option>
+                            {filteredStudents.map((s) => (
+                              <option key={s.id} value={s.id} className="font-semibold text-slate-900">
+                                {s.name} ({s.username})
+                              </option>
+                            ))}
+                            {selectedClass && (
+                              <option value="__manual__" className="text-indigo-700 font-bold bg-indigo-50">
+                                ➕ Không tìm thấy tên trong danh sách? Nhập tên đăng nhập thủ công
+                              </option>
+                            )}
+                          </select>
+                          <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                            <ArrowRight className="w-4 h-4 rotate-90" />
+                          </div>
+                        </div>
+
+                        {/* Direct prompt button for students who don't see their name */}
+                        <div className="flex items-center justify-between px-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsManualUsernameMode(true);
+                              setSelectedStudentId("");
+                              setError(null);
+                            }}
+                            className="text-[11px] font-semibold text-slate-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer transition text-left"
+                          >
+                            <span>💡 Không tìm thấy tên bạn trong danh sách?</span>
+                            <span className="font-bold text-indigo-700 underline">Bấm vào đây để tự nhập tên đăng nhập</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Trường tự nhập tên đăng nhập nếu không tìm thấy tên trong danh sách */
+                      <div className="space-y-1.5 p-3.5 bg-indigo-50/80 border-2 border-indigo-300 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-black uppercase text-indigo-900 font-mono">
+                            Tên đăng nhập (Username):
+                          </span>
+                          <span className="text-[10px] font-bold text-indigo-800 bg-indigo-200/70 px-2 py-0.5 rounded font-mono">
+                            Tự nhập thông tin
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            required
+                            autoFocus
+                            value={manualUsername}
+                            onChange={(e) => {
+                              setManualUsername(e.target.value);
+                              setError(null);
+                            }}
+                            placeholder="Nhập tên đăng nhập của bạn (VD: hs_nguyenvanan hoặc mã học sinh)..."
+                            className="w-full px-3.5 py-3 bg-white border-2 border-indigo-400 rounded-xl text-sm font-bold text-slate-950 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200 transition"
+                          />
+                        </div>
+                        <p className="text-[11px] text-indigo-900 font-semibold leading-relaxed">
+                          💡 Dành cho học sinh chưa có tên trong danh sách lớp. Hãy nhập chính xác Tên đăng nhập do giáo viên cung cấp.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* THUỘC TÍNH 4: MẬT KHẨU */}
@@ -344,19 +453,23 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                       <input
                         type={showListPassword ? "text" : "password"}
                         required
-                        disabled={!selectedStudentId}
+                        disabled={isManualUsernameMode ? !manualUsername.trim() : !selectedStudentId}
                         value={listPassword}
                         onChange={(e) => setListPassword(e.target.value)}
-                        placeholder={selectedStudentId ? "Nhập mật khẩu..." : "Vui lòng chọn học sinh trước"}
+                        placeholder={
+                          isManualUsernameMode
+                            ? (manualUsername.trim() ? "Nhập mật khẩu tài khoản..." : "Vui lòng nhập tên đăng nhập trước")
+                            : (selectedStudentId ? "Nhập mật khẩu..." : "Vui lòng chọn học sinh trước")
+                        }
                         className={`w-full px-3.5 pr-11 py-3 border-2 rounded-xl text-sm font-bold text-slate-950 placeholder-slate-400 transition ${
-                          selectedStudentId
+                          (isManualUsernameMode ? manualUsername.trim() : selectedStudentId)
                             ? "bg-[#eef2f6] border-slate-300 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200"
                             : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
                         }`}
                       />
                       <button
                         type="button"
-                        disabled={!selectedStudentId}
+                        disabled={isManualUsernameMode ? !manualUsername.trim() : !selectedStudentId}
                         onClick={() => setShowListPassword(!showListPassword)}
                         className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-800 cursor-pointer disabled:opacity-40"
                       >
@@ -368,7 +481,13 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                   {/* Nút đăng nhập */}
                   <button
                     type="submit"
-                    disabled={isLoading || !selectedSchool || !selectedClass || !selectedStudentId || !listPassword}
+                    disabled={
+                      isLoading ||
+                      !listPassword ||
+                      (isManualUsernameMode
+                        ? !manualUsername.trim()
+                        : (!selectedSchool || !selectedClass || !selectedStudentId))
+                    }
                     className="w-full py-3.5 mt-3 bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-black uppercase tracking-wider font-mono shadow-sm active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {isLoading ? (
